@@ -373,6 +373,14 @@ table.cmp th{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-
 body.present{overflow:hidden;padding-bottom:0}
 body.present .deck{margin:0;max-width:none}
 body.present .slide{display:none}
+body.present.bigtext .slide.active{width:1000px!important}
+body.present.bigtext{overflow-x:hidden;overflow-y:auto}
+body.present.bigtext .slide.active{position:absolute}
+body.present.bigtext .ledger{display:none}
+body.present.bigtext .bar .brand{display:none}
+body.present.bigtext #titta-forst .ledger{display:grid}
+body.present.bigtext .bar{padding:4px 0}
+body.present.bigtext .nav{padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
 body.present .slide.active{display:flex;position:fixed;left:0;top:0;width:1280px;transform-origin:0 0;font-size:19px;scroll-margin-top:0}
 body.present .src,body.present .datasrc{display:none}
 body.present .slide h2{font-size:46px}
@@ -419,6 +427,7 @@ body.present.hide-notes .notes{display:none}
       <button type="button" data-v="light" aria-pressed="false">Ljust</button>
       <button type="button" data-v="dark" aria-pressed="false">Mörkt</button>
     </div>
+    <button class="btn" id="textBtn" type="button" aria-pressed="false" title="Större text för små skärmar (T)">Stor text</button>
     <button class="btn" id="motionBtn" type="button" aria-pressed="true">Animationer på</button>
     <button class="btn" id="resetBtn" type="button" title="Nollställ alla övningar (R)">Återställ</button>
     <button class="btn" id="fsBtn" type="button">Helskärm</button>
@@ -1589,7 +1598,7 @@ const slides=[...document.querySelectorAll(".slide")];let cur=0;
 const body=document.body,modeBtn=document.getElementById("modeBtn"),notesBtn=document.getElementById("notesBtn");
 function setMode(present){body.classList.toggle("present",present);modeBtn.textContent=present?"Läsläge":"Presentera";notesBtn.hidden=!present;
  document.querySelectorAll(".src").forEach(d=>{if(!present)d.open=true;else d.open=false;});
- if(present){go(cur);}else{slides.forEach(s=>{s.classList.remove("active");s.style.transform="";});slides[cur].scrollIntoView({block:"start"});}
+ if(present){go(cur);}else{body.style.minHeight="";slides.forEach(s=>{s.classList.remove("active");s.style.transform="";});slides[cur].scrollIntoView({block:"start"});}
  try{localStorage.setItem("ai-tand-mode",present?"p":"r")}catch(e){}}
 const RM=RMQ;
 function setVT(sl,on){if(!sl)return;const pairs=sl.classList.contains("part")?[]:[[".slide-head","vt-head"],[":scope > h2","vt-title"]];
@@ -1633,20 +1642,25 @@ document.addEventListener("keydown",e=>{if(e.target.matches("textarea,input:not(
  else if(["ArrowRight","ArrowDown","PageDown"].includes(e.key)){e.preventDefault();if(!(st&&st.next())&&!qStep(slides[cur],1))go(cur+1);}
  else if(["ArrowLeft","ArrowUp","PageUp"].includes(e.key)){e.preventDefault();if(!(st&&st.prev())&&!qStep(slides[cur],-1))go(cur-1);}
  else if(e.key==="Home")go(0);else if(e.key==="End")go(slides.length-1);
+ else if(e.key==="t"||e.key==="T")textBtn.click();
  else if(e.key==="Escape")setMode(false);else if(e.key==="n"||e.key==="N")notesBtn.click();});
 /* fit active slide to the screen */
-const DESIGN_W=1280;
+let DESIGN_W=1280;
 let fitKey="",fitScale=0;
 function fit(force){if(!body.classList.contains("present"))return;const sl=slides[cur];if(!sl)return;
   const bar=document.querySelector(".bar").getBoundingClientRect(),nav=document.querySelector(".nav").getBoundingClientRect();
   const top=bar.bottom+12,availH=nav.top-12-top,availW=innerWidth-32;
   sl.style.transform="none";const h=sl.offsetHeight;
+  const big=body.classList.contains("bigtext");
   let sc=Math.min(availW/DESIGN_W,availH/h,1.6);
-  const key=cur+"|"+innerWidth+"x"+innerHeight;
+  /* large text: never shrink below a readable floor; tall slides scroll vertically instead */
+  if(big)sc=Math.max(sc,Math.min(availW/DESIGN_W,1.15));
+  const key=cur+"|"+innerWidth+"x"+innerHeight+"|"+big;
   if(force!==true&&key===fitKey&&fitScale&&sc>=fitScale)sc=fitScale; /* keep the scale stable while on the same slide */
   fitKey=key;fitScale=sc;
   const left=(innerWidth-DESIGN_W*sc)/2,y=top+Math.max(0,(availH-h*sc)/2);
-  sl.style.transform=`translate(${left}px,${y}px) scale(${sc})`;}
+  sl.style.transform=`translate(${left}px,${y}px) scale(${sc})`;
+  body.style.minHeight=big&&h*sc>availH?Math.ceil(y+h*sc+(innerHeight-nav.top)+16)+"px":"";}
 addEventListener("resize",fit);document.addEventListener("fullscreenchange",()=>setTimeout(fit,60));
 const ro=new ResizeObserver(()=>fit(false));slides.forEach(s=>ro.observe(s));
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
@@ -1715,6 +1729,12 @@ document.querySelectorAll(".chart,.slide:has(.big)").forEach(x=>seenIO.observe(x
 function resetSlide(id){const st=STEPPERS[id];if(st&&st.reset)st.reset();}
 function resetAll(){if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();Object.keys(STEPPERS).forEach(resetSlide);if(body.classList.contains("present"))fit(true);}
 document.getElementById("resetBtn").onclick=()=>{resetAll();const b=document.getElementById("resetBtn");b.textContent="Återställd";setTimeout(()=>b.textContent="Återställ",1500);};
+/* ---------------- LARGE TEXT (narrower design width = bigger scale) ---------------- */
+const textBtn=document.getElementById("textBtn");
+function setBigText(on){body.classList.toggle("bigtext",on);DESIGN_W=on?1000:1280;textBtn.setAttribute("aria-pressed",on?"true":"false");textBtn.textContent=on?"Stor text på":"Stor text";
+  try{localStorage.setItem("ai-tand-bigtext",on?"on":"off")}catch(e){}fitKey="";if(body.classList.contains("present")){fit(true);if(typeof svLayout==="function")svLayout();}}
+textBtn.onclick=()=>setBigText(!body.classList.contains("bigtext"));
+{let t="off";try{t=localStorage.getItem("ai-tand-bigtext")||"off"}catch(e){}setBigText(t==="on");}
 /* ---------------- MOTION TOGGLE ---------------- */
 const motionBtn=document.getElementById("motionBtn");
 function setMotion(on){document.documentElement.classList.toggle("calm",!on);motionBtn.setAttribute("aria-pressed",on?"true":"false");motionBtn.textContent=on?"Animationer på":"Animationer av";try{localStorage.setItem("ai-tand-motion",on?"on":"off")}catch(e){}}
